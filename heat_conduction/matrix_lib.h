@@ -25,13 +25,13 @@ void step_kernel_ref(int ni, int nj, float fact, float* temp_in, float* temp_out
 //  Function to initialize matrices with random data
 //
 //------------------------------------------------------------------------------
-void initmat(int size, float *temp1_ref, float *temp2_ref);
+void initmat(int size, float *temp1, float *temp2);
 
 //------------------------------------------------------------------------------
 //
 //  Function to analyze and output results 
 //
 //------------------------------------------------------------------------------
-void results(int ni, int nj, float *temp1, float *temp1_ref);
+void results(int ni, int nj, float *temp, float *temp_ref);
     
 #endif

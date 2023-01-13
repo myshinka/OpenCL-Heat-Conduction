@@ -56,10 +56,11 @@ void step_kernel_ref(int ni, int nj, float fact, float* temp_in, float* temp_out
 //  Function to initialize matrices with random data
 //
 //------------------------------------------------------------------------------
-void initmat(int size, float *temp1_ref, float *temp2_ref)
+void initmat(int size, float *temp1, float *temp2)
 {
 	for( int i = 0; i < size; ++i) {
-    temp1_ref[i] = temp2_ref[i] = (float)rand()/(float)(RAND_MAX/100.0f);
+		temp1[i] = (float)rand()/(float)(RAND_MAX/100.0f);
+		temp2[i] = 0;
   }
 }
 
@@ -68,13 +69,13 @@ void initmat(int size, float *temp1_ref, float *temp2_ref)
 //  Function to analyze and output results
 //
 //------------------------------------------------------------------------------
-void results(int ni, int nj, float *temp1, float *temp1_ref)
+void results(int ni, int nj, float *temp, float *temp_ref)
 {
 
 	float maxError = 0;
 
 	for( int i = 0; i < ni*nj; ++i ) {
-		if (abs(temp1[i]-temp1_ref[i]) > maxError) { maxError = abs(temp1[i]-temp1_ref[i]); }
+		if (abs(temp[i]-temp_ref[i]) > maxError) { maxError = abs(temp[i]-temp_ref[i]); }
 	}
 
 	// Check and see if our maxError is greater than an error bound

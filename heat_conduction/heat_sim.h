@@ -35,7 +35,8 @@ extern double wtime();   // returns time since some fixed past point (wtime.c)
 //------------------------------------------------------------------------------
 //  Constants
 //------------------------------------------------------------------------------
-#define ORDER    320      // Order of the square matrices
+#define WIDTH    320      // Order of the square matrices
+#define HEIGHT	 320
 #define TOL      (0.0005) // tolerance used in floating point comparisons
 #define DIM      2        // Max dim for NDRange
 #define COUNT    30       // number of times to do each multiplication
