@@ -98,6 +98,9 @@ int main(int argc, char *argv[])
 	// Do the multiplication COUNT times
     for (int i = 0; i < COUNT; i++) {
 		step_kernel_ref(ni, nj, tfac, temp1_ref, temp2_ref);
+		
+		// update the temperature pointer
+		temp1_ref = temp2_ref;
 	}
 	
     run_time  = wtime() - start_time;
@@ -173,11 +176,12 @@ int main(int argc, char *argv[])
             sizeof(float) * size, temp_out,
             0, NULL, NULL);
         checkError(err, "Reading back temp2");
+		temp1 = temp2;
 		
 		total_run_time += run_time;
     } // end for loop
 	
-	results(ni, nj, temp_out, temp2_ref);
+	results(ni, nj, temp_out, temp1_ref);
 	printf("Overall GPU performance: %.3f miliseconds, transfer %.0f kB. \n\n",
 	total_run_time, transfer);
 
