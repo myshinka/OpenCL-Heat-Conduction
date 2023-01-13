@@ -8,8 +8,7 @@ char * getKernelSource(char *filename);
 int main(int argc, char *argv[])
 {
     float *temp1_ref, *temp2_ref; // reference matrices in host memory
-    float *temp_tmp;
-	float *temp1_h, *temp2_h;			  // matrices in host memory
+	float *temp_out;			  // host output matrix for GPU
 	
     int N;                  // temp[N][N]
     int size;               // number of elements in each matrix
@@ -38,6 +37,9 @@ int main(int argc, char *argv[])
 
     temp1_ref = (float *)malloc(size * sizeof(float));
     temp2_ref = (float *)malloc(size * sizeof(float));
+	temp_out = (float *)malloc(size * sizeof(float));
+	
+	transfer = 2 * sizeof(float) * size / 1024;
 
 
 //--------------------------------------------------------------------------------
@@ -77,14 +79,13 @@ int main(int argc, char *argv[])
 //--------------------------------------------------------------------------------
 	initmat(size, temp1_ref, temp2_ref);
 	
-	temp1_h = temp1_ref;
-	temp2_h = temp2_ref;
+	temp_out = temp2_ref;
 	
     temp1 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                            sizeof(float) * size, temp1_h, &err);
+                            sizeof(float) * size, temp1_ref, &err);
     checkError(err, "Creating buffer temp1");
     temp2 = clCreateBuffer(context, CL_MEM_WRITE_ONLY | CL_MEM_COPY_HOST_PTR,
-                            sizeof(float) * size, temp2_h, &err);
+                            sizeof(float) * size, temp_out, &err);
     checkError(err, "Creating buffer temp2");
 	
 //--------------------------------------------------------------------------------
@@ -93,21 +94,16 @@ int main(int argc, char *argv[])
     printf("\n===== Executing %d times host CPU version, order %d x %d ======\n", COUNT, ni, nj);
 	
 	start_time = wtime();
-	// Do the multiplication COUNT times
-    for (int i = 0; i < COUNT; i++)
-    {
-
-    step_kernel_ref(ni, nj, tfac, temp1_ref, temp2_ref);
 	
-	// swap the temperature pointers
-    //temp_tmp = temp1_ref;
-    //temp1_ref = temp2_ref;
-    //temp2_ref = temp_tmp;
+	// Do the multiplication COUNT times
+    for (int i = 0; i < COUNT; i++) {
+		step_kernel_ref(ni, nj, tfac, temp1_ref, temp2_ref);
 	}
 	
     run_time  = wtime() - start_time;
 	
-	printf("Multiplication runtime: %.3f miliseconds\n", run_time*1000);
+	printf("Overall CPU preformance: %.3f miliseconds, transfer %.0f kB.\n",
+	run_time*1000, transfer);
 
 //--------------------------------------------------------------------------------
 // Run GPU version
@@ -137,13 +133,14 @@ int main(int argc, char *argv[])
 
     printf("\n===== Executing %d times device GPU version, order %d x %d ======\n", COUNT, ni, nj);
 
+	const unsigned int blocksize = CL_DEVICE_MAX_WORK_GROUP_SIZE - 2;
+	const unsigned int computeUnits = CL_DEVICE_MAX_COMPUTE_UNITS;
+	printf("%d %d \n", blocksize, computeUnits);
+		
     // Do the multiplication COUNT times
     for (int i = 0; i < COUNT; i++)
     {
 		   
-        const unsigned int blocksize = 8;
-		const unsigned int computeUnits = CL_DEVICE_MAX_COMPUTE_UNITS;
-
         err =  clSetKernelArg(kernel, 0, sizeof(int),    &ni);
         err |= clSetKernelArg(kernel, 1, sizeof(int),    &nj);
         err |= clSetKernelArg(kernel, 2, sizeof(float),  &tfac);
@@ -173,17 +170,15 @@ int main(int argc, char *argv[])
 
         err = clEnqueueReadBuffer(
             commands, temp2, CL_TRUE, 0,
-            sizeof(float) * size, temp2_h,
+            sizeof(float) * size, temp_out,
             0, NULL, NULL);
         checkError(err, "Reading back temp2");
 		
 		total_run_time += run_time;
     } // end for loop
 	
-	results(ni, nj, temp2_h, temp2_ref);
-	
-	transfer = 2 * sizeof(float) * size / 1024;
-	printf("\nOverall GPU performance: %.1f miliseconds, Transfer %.0f kB. \n",
+	results(ni, nj, temp_out, temp2_ref);
+	printf("Overall GPU performance: %.3f miliseconds, transfer %.0f kB. \n\n",
 	total_run_time, transfer);
 
 //--------------------------------------------------------------------------------
