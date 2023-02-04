@@ -7,17 +7,15 @@ char * getKernelSource(char *filename);
 
 int main(int argc, char *argv[])
 {
-    float *temp1_ref, *temp2_ref; // reference matrices in host memory
+    float *temp1_ref, *temp2_ref, *temp; // reference matrices in host memory
 	float *temp_out;			  // host output matrix for GPU
 	
-    int N;                  // temp[N][N]
     int size;               // number of elements in each matrix
 
-    cl_mem temp1, temp2;   // matrices in device memory
+    cl_mem temp1, temp2, temp_tmp;   // matrices in device memory
 
     double start_time;      // starting time
     double run_time;        // run time
-	double total_run_time = 0.0;
 	float transfer;
 	float tfac = 8.418e-5; // thermal diffusivity of silver
 
@@ -30,20 +28,39 @@ int main(int argc, char *argv[])
     cl_program       program;       // compute program
     cl_kernel        kernel;        // compute kernel
 
-    const int ni = WIDTH;
-	const int nj = HEIGHT;
+    int ni = WIDTH;
+	int nj = HEIGHT;
+	int tSteps = COUNT;
+	
+//--------------------------------------------------------------------------------
+// Check flags for custom input and allocate memory
+//--------------------------------------------------------------------------------
+	
+	for (int i = 1; i < argc; i++) {
+		
+		if (strcmp(argv[i], "help") == 0 || strcmp(argv[i], "?") == 0) {
+			printf("      -mW= MatWidth (Width of matrices, default 320)\n");
+			printf("      -mH= MatHeight (Height of matrices, default 320)\n");
+			printf("      -tS= TimeSteps (Number of time steps, default 30)\n");
 
-    size = ni * nj;
+			return 0;
+		}
+	  
+		if (strcmp(argv[i], "-mW=") == 0) ni = atoi(argv[i+1]);
+		if (strcmp(argv[i], "-mH=") == 0) nj = atoi(argv[i+1]);
+		if (strcmp(argv[i], "-tS=") == 0) tSteps = atoi(argv[i+1]);
+	}
+	printf("%d, %d, %d\n", ni, nj, tSteps);
+	size = ni * nj;
 
     temp1_ref = (float *)malloc(size * sizeof(float));
     temp2_ref = (float *)malloc(size * sizeof(float));
 	temp_out = (float *)malloc(size * sizeof(float));
 	
 	transfer = 2 * sizeof(float) * size / 1024;
-
-
+	
 //--------------------------------------------------------------------------------
-// Create a context, queue and device.
+// Create a context, queue and device
 //--------------------------------------------------------------------------------
 
     cl_uint deviceIndex = 0;
@@ -77,36 +94,38 @@ int main(int argc, char *argv[])
 //--------------------------------------------------------------------------------
 // Initialise matrices, setup the buffers and write them into global memory
 //--------------------------------------------------------------------------------
-	initmat(size, temp1_ref, temp2_ref);
+	initmat(size, temp1_ref, temp2_ref, temp_out);
 	
-	temp_out = temp2_ref;
 	
-    temp1 = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                            sizeof(float) * size, temp1_ref, &err);
-    checkError(err, "Creating buffer temp1");
-    temp2 = clCreateBuffer(context, CL_MEM_WRITE_ONLY | CL_MEM_COPY_HOST_PTR,
+    temp1 = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
                             sizeof(float) * size, temp_out, &err);
+    checkError(err, "Creating buffer temp1");
+    temp2 = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+                            sizeof(float) * size, temp2_ref, &err);
     checkError(err, "Creating buffer temp2");
 	
 //--------------------------------------------------------------------------------
 // Run host reference version
 //--------------------------------------------------------------------------------
-    printf("\n===== Executing %d times host CPU version, order %d x %d ======\n", COUNT, ni, nj);
+    printf("\n===== Executing %d times host CPU version, order %d x %d ======\n", tSteps, ni, nj);
 	
 	start_time = wtime();
 	
-	// Do the multiplication COUNT times
-    for (int i = 0; i < COUNT; i++) {
+    for (int i = 0; i < tSteps; i++) {
 		step_kernel_ref(ni, nj, tfac, temp1_ref, temp2_ref);
 		
-		// update the temperature pointer
+		// swap temperature pointer
+		temp = temp1_ref;
 		temp1_ref = temp2_ref;
+		temp2_ref = temp;
 	}
 	
     run_time  = wtime() - start_time;
 	
 	printf("Overall CPU preformance: %.3f miliseconds, transfer %.0f kB.\n",
 	run_time*1000, transfer);
+	
+	run_time = 0;
 
 //--------------------------------------------------------------------------------
 // Run GPU version
@@ -134,14 +153,12 @@ int main(int argc, char *argv[])
     if (!kernel || err != CL_SUCCESS)
     checkError(err, "Creating kernel with C_heat_conduction.cl");
 
-    printf("\n===== Executing %d times device GPU version, order %d x %d ======\n", COUNT, ni, nj);
-
-	const unsigned int blocksize = CL_DEVICE_MAX_WORK_GROUP_SIZE - 2;
-	const unsigned int computeUnits = CL_DEVICE_MAX_COMPUTE_UNITS;
-	printf("%d %d \n", blocksize, computeUnits);
+    printf("\n===== Executing %d times device GPU version, order %d x %d ======\n", tSteps, ni, nj);
+	
+	//const unsigned int blocksize = CL_KERNEL_WORK_GROUP_SIZE;
+	//const unsigned int computeUnits = CL_DEVICE_MAX_COMPUTE_UNITS;
 		
-    // Do the multiplication COUNT times
-    for (int i = 0; i < COUNT; i++)
+    for (int i = 0; i < tSteps; i++)
     {
 		   
         err =  clSetKernelArg(kernel, 0, sizeof(int),    &ni);
@@ -154,44 +171,48 @@ int main(int argc, char *argv[])
 
         start_time = wtime();
 
-        // Execute the kernel over the rows of the matrix ... computing
-        // a dot product for each element of the product matrix.
-        const size_t global[2] = {10, 20};
-        const size_t local[2] = {10, 10};
+        // Execute the kernel
+        const size_t global[2] = {ni/8, nj/8};
+        //const size_t local[2] = {ni/8, nj/8};
         err = clEnqueueNDRangeKernel(
             commands,
             kernel,
             2, NULL,
-            global, local,
+            global, 0,
             0, NULL, NULL);
         checkError(err, "Enqueueing kernel");
 
         err = clFinish(commands);
         checkError(err, "Waiting for kernel to finish");
 
-        run_time = (wtime() - start_time) * 1000;
-
-        err = clEnqueueReadBuffer(
-            commands, temp2, CL_TRUE, 0,
+        run_time += (wtime() - start_time) * 1000;
+		
+		// swap temperature pointers
+		temp_tmp = temp1;
+		temp1 = temp2;
+		temp2 = temp_tmp;
+		
+    } // end for loop
+	
+	
+	err = clEnqueueReadBuffer(
+            commands, temp1, CL_TRUE, 0,
             sizeof(float) * size, temp_out,
             0, NULL, NULL);
         checkError(err, "Reading back temp2");
-		temp1 = temp2;
-		
-		total_run_time += run_time;
-    } // end for loop
 	
 	results(ni, nj, temp_out, temp1_ref);
 	printf("Overall GPU performance: %.3f miliseconds, transfer %.0f kB. \n\n",
-	total_run_time, transfer);
+	run_time, transfer);
 
 //--------------------------------------------------------------------------------
 // Clean up
 //--------------------------------------------------------------------------------
-
-    free(temp1_ref);
+	free(temp1_ref);
     free(temp2_ref);
-    clReleaseMemObject(temp1);
+	free(temp_out);
+	
+	clReleaseMemObject(temp1);
     clReleaseMemObject(temp2);
     clReleaseProgram(program);
     clReleaseKernel(kernel);
