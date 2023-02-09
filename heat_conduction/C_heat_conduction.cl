@@ -16,8 +16,8 @@ __kernel void step_kernel_mod(
 	int i00, im10, ip10, i0m1, i0p1;
 	float d2tdx2, d2tdy2;
   
-	int j = get_global_id(0) + 1;
-	int i = get_global_id(1) + 1;
+	int j = get_global_id(1) + 1;
+	int i = get_global_id(0) + 1;
 
 	if(i < ni-1 && j < nj-1) {
 		// find indices into linear memory for central point and neighbours

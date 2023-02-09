@@ -31,6 +31,7 @@ int main(int argc, char *argv[])
     int ni = WIDTH;
 	int nj = HEIGHT;
 	int tSteps = COUNT;
+	bool saveData = 0;
 	
 //--------------------------------------------------------------------------------
 // Check flags for custom input and allocate memory
@@ -42,6 +43,7 @@ int main(int argc, char *argv[])
 			printf("      -mW= MatWidth (Width of matrices, default 320)\n");
 			printf("      -mH= MatHeight (Height of matrices, default 320)\n");
 			printf("      -tS= TimeSteps (Number of time steps, default 30)\n");
+			printf("      -sF (Save numeric data to heat_con.csv)\n");
 
 			return 0;
 		}
@@ -49,8 +51,9 @@ int main(int argc, char *argv[])
 		if (strcmp(argv[i], "-mW=") == 0) ni = atoi(argv[i+1]);
 		if (strcmp(argv[i], "-mH=") == 0) nj = atoi(argv[i+1]);
 		if (strcmp(argv[i], "-tS=") == 0) tSteps = atoi(argv[i+1]);
+		if (strcmp(argv[i], "-sF") == 0) saveData = 1;
 	}
-	printf("%d, %d, %d\n", ni, nj, tSteps);
+	
 	size = ni * nj;
 
     temp1_ref = (float *)malloc(size * sizeof(float));
@@ -94,8 +97,7 @@ int main(int argc, char *argv[])
 //--------------------------------------------------------------------------------
 // Initialise matrices, setup the buffers and write them into global memory
 //--------------------------------------------------------------------------------
-	initmat(size, temp1_ref, temp2_ref, temp_out);
-	
+	initmat(size, temp1_ref, temp_out, temp2_ref);
 	
     temp1 = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
                             sizeof(float) * size, temp_out, &err);
@@ -109,18 +111,27 @@ int main(int argc, char *argv[])
 //--------------------------------------------------------------------------------
     printf("\n===== Executing %d times host CPU version, order %d x %d ======\n", tSteps, ni, nj);
 	
+	//remove previous file
+	if(saveData == 1) remove("heat_con.csv");
+	
 	start_time = wtime();
 	
     for (int i = 0; i < tSteps; i++) {
-		step_kernel_ref(ni, nj, tfac, temp1_ref, temp2_ref);
+		if(saveData == 0)
+			step_kernel_ref(ni, nj, tfac, temp1_ref, temp2_ref);
+		else
+			step_kernel_file(ni, nj, tfac, temp1_ref, temp2_ref);
 		
 		// swap temperature pointer
 		temp = temp1_ref;
 		temp1_ref = temp2_ref;
 		temp2_ref = temp;
+		
 	}
 	
     run_time  = wtime() - start_time;
+	
+	if(saveData == 1) printf("Numeric data saved to heat_con.csv\n");
 	
 	printf("Overall CPU preformance: %.3f miliseconds, transfer %.0f kB.\n",
 	run_time*1000, transfer);
@@ -153,10 +164,8 @@ int main(int argc, char *argv[])
     if (!kernel || err != CL_SUCCESS)
     checkError(err, "Creating kernel with C_heat_conduction.cl");
 
-    printf("\n===== Executing %d times device GPU version, order %d x %d ======\n", tSteps, ni, nj);
-	
-	//const unsigned int blocksize = CL_KERNEL_WORK_GROUP_SIZE;
-	//const unsigned int computeUnits = CL_DEVICE_MAX_COMPUTE_UNITS;
+    printf("\n===== Executing %d times device GPU version, order %d x %d ======\n",
+		tSteps, ni, nj);
 		
     for (int i = 0; i < tSteps; i++)
     {
@@ -172,13 +181,13 @@ int main(int argc, char *argv[])
         start_time = wtime();
 
         // Execute the kernel
-        const size_t global[2] = {ni/8, nj/8};
-        //const size_t local[2] = {ni/8, nj/8};
+		const size_t global[2] = {8, 8};
+		const size_t local[2] = {8, 8};
         err = clEnqueueNDRangeKernel(
             commands,
             kernel,
             2, NULL,
-            global, 0,
+            global, local,
             0, NULL, NULL);
         checkError(err, "Enqueueing kernel");
 
@@ -190,10 +199,9 @@ int main(int argc, char *argv[])
 		// swap temperature pointers
 		temp_tmp = temp1;
 		temp1 = temp2;
-		temp2 = temp_tmp;
+		temp2 = temp_tmp;	
 		
     } // end for loop
-	
 	
 	err = clEnqueueReadBuffer(
             commands, temp1, CL_TRUE, 0,

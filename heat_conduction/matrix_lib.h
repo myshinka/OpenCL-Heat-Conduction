@@ -22,11 +22,18 @@ void step_kernel_ref(int ni, int nj, float fact, float* temp_in, float* temp_out
 
 //------------------------------------------------------------------------------
 //
+//	Referential function which includes saving data to file
+//
+//------------------------------------------------------------------------------
+void step_kernel_file(int ni, int nj, float fact, float* temp_in, float* temp_out);
+
+//------------------------------------------------------------------------------
+//
 //  Function to initialize matrices with random data
 //
 //------------------------------------------------------------------------------
 void initmat(int size, float *temp1, float *temp2, float *temp3);
-							 
+
 //------------------------------------------------------------------------------
 //
 //  Function to analyze and output results 
