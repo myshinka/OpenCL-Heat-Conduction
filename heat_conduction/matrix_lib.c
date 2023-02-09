@@ -111,8 +111,8 @@ void results(int ni, int nj, float *temp, float *temp_ref)
 	int id = 0;
 
 	for( int i = 0; i < ni*nj; ++i ) {
-		if (abs(temp[i]-temp_ref[i]) > maxError) { 
-			maxError = abs(temp[i]-temp_ref[i]); 
+		if (fabs(temp[i]-temp_ref[i]) > maxError) { 
+			maxError = fabs(temp[i]-temp_ref[i]); 
 			id = i;
 		}
 	}

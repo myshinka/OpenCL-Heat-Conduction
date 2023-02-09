@@ -181,13 +181,12 @@ int main(int argc, char *argv[])
         start_time = wtime();
 
         // Execute the kernel
-		const size_t global[2] = {8, 8};
-		const size_t local[2] = {8, 8};
+		const size_t global[2] = {ni-1, nj-1};
         err = clEnqueueNDRangeKernel(
             commands,
             kernel,
             2, NULL,
-            global, local,
+            global, 0,
             0, NULL, NULL);
         checkError(err, "Enqueueing kernel");
 
